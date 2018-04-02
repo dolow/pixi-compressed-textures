@@ -87,7 +87,7 @@ CompressedImage.loadFromArrayBuffer = function (arrayBuffer, src) {
 };
 
 CompressedImage.prototype.loadFromArrayBuffer = function(arrayBuffer, crnLoad) {
-    var head = new Uint8Array(arrayBuffer, 0, 3);
+    var head = new Uint8Array(arrayBuffer, 0, 4);
 
     //todo: implement onload
 
@@ -97,6 +97,8 @@ CompressedImage.prototype.loadFromArrayBuffer = function(arrayBuffer, crnLoad) {
         return this._loadPVR(arrayBuffer);
     else if (head[0] == 0x13 && head[1] == 0xab && head[2] == 0xa1)
         return this._loadASTC(arrayBuffer);
+    else if (head[0] == 0x50 && head[1] == 0x4b && head[2] == 0x4d && head[3] == 0x20)
+        return this._loadPKM(arrayBuffer);
     else if(crnLoad)
         return this._loadCRN(arrayBuffer);
     else
@@ -206,7 +208,6 @@ CompressedImage.prototype._loadDDS = function(arrayBuffer) {
  */
 CompressedImage.prototype._loadASTC = function(arrayBuffer) {
     // Get a view of the arrayBuffer that represents the DDS header.
-        
     var header = new Int8Array(arrayBuffer, 0, ASTC_HEADER_LENGTH);
 
     var magic = new Uint32Array(arrayBuffer.slice(0,4));
@@ -233,18 +234,18 @@ CompressedImage.prototype._loadASTC = function(arrayBuffer) {
 
 /*
 */
-    
+
     //https://developer.mozilla.org/en-US/docs/Web/API/WEBGL_compressed_texture_astc
     var dataSize = arrayBuffer.byteLength-ASTC_HEADER_LENGTH; //loaded image data payload size in bytes
-    
+
     //retieve width and height of texture from the astc file header
     var widthBytes=new Uint8Array([header[7], header[8], header[9], 0]);
     var heightBytes=new Uint8Array([header[10], header[11], header[12], 0]);
     var width = new Uint32Array(widthBytes.buffer)[0];
     var height = new Uint32Array(heightBytes.buffer)[0];
-    
+
     //detect format from data size
-    var internalFormat = 0;  
+    var internalFormat = 0;
     for(var i=0;i<detectFormats.length;i++){
         if(dataSize === textureLevelSize(detectFormats[i], width, height)){
             internalFormat=detectFormats[i];
@@ -253,10 +254,10 @@ CompressedImage.prototype._loadASTC = function(arrayBuffer) {
     }
     if(internalFormat === 0)
         throw "Unable to autodetect ASTC format; file size not right";
-    
-    var dataOffset = ASTC_HEADER_LENGTH; 
+
+    var dataOffset = ASTC_HEADER_LENGTH;
     var astcData = new Uint8Array(arrayBuffer, dataOffset, dataSize);
-    
+
     var levels=1;
     return this.init(this.src, astcData, 'ASTC', width, height, levels, internalFormat);
 };
@@ -317,6 +318,30 @@ CompressedImage.prototype._loadPVR = function(arrayBuffer) {
 };
 
 
+CompressedImage.prototype._loadPKM = function(arrayBuffer) {
+    var header = new Uint8Array(arrayBuffer, 0, PKM_HEADER_LENGTH);
+
+    for (var i = 0; i < PKM_HEADER_MAGIC_LENGTH; i++) {
+        if (header[i] !== PKM_HEADER_MAGIC[i])
+            throw "Invalid magic number in PKM header";
+    }
+
+    var majorVersion8 = header[PKM_HEADER_VERSION_MAJOR];
+    var minorVersion8 = header[PKM_HEADER_VERSION_MINOR];
+    var type = header[PKM_HEADER_TYPE];
+    var width = header[PKM_HEADER_WIDTH_HIGH] * 256 + header[PKM_HEADER_WIDTH_LOW];
+    var height = header[PKM_HEADER_HEIGHT_HIGH] * 256 + header[PKM_HEADER_HEIGHT_LOW];
+    var activeWidth = header[PKM_HEADER_ACTIVE_W_HIGH] * 256 + header[PKM_HEADER_ACTIVE_W_LOW];
+    var activeHeight = header[PKM_HEADER_ACTIVE_H_HIGH] * 256 + header[PKM_HEADER_ACTIVE_H_LOW];
+
+    var data = new Uint8Array(arrayBuffer, PKM_HEADER_LENGTH);
+    var levels = 1;
+    var internalFormat = COMPRESSED_RGB_ETC1_WEBGL;
+
+    return this.init(this.src, data, 'PKM', width, height, levels, internalFormat);
+};
+
+
 //============================//
 // DXT constants and utilites //
 //============================//
@@ -365,7 +390,7 @@ function textureLevelSize(format, width, height) {
     	//ASTC formats, https://www.khronos.org/registry/webgl/extensions/WEBGL_compressed_texture_astc/
         case COMPRESSED_RGBA_ASTC_4x4_KHR:
         case COMPRESSED_SRGB8_ALPHA8_ASTC_4x4_KHR:
-            return Math.floor((width + 3) / 4) *  Math.floor((height + 3) / 4) * 16; 
+            return Math.floor((width + 3) / 4) *  Math.floor((height + 3) / 4) * 16;
         case COMPRESSED_RGBA_ASTC_5x4_KHR:
         case COMPRESSED_SRGB8_ALPHA8_ASTC_5x4_KHR:
             return Math.floor((width + 4) / 5) * Math.floor((height + 3) / 4) * 16;
@@ -404,7 +429,7 @@ function textureLevelSize(format, width, height) {
              return Math.floor((width + 11) / 12) * Math.floor((height + 9) / 10) * 16;
         case COMPRESSED_RGBA_ASTC_12x12_KHR:
         case COMPRESSED_SRGB8_ALPHA8_ASTC_12x12_KHR:
-             return Math.floor((width + 11) / 12) * Math.floor((height + 11) / 12) * 16; 
+             return Math.floor((width + 11) / 12) * Math.floor((height + 11) / 12) * 16;
 
         default:
             return 0;
@@ -426,7 +451,7 @@ var COMPRESSED_RGBA_ATC_INTERPOLATED_ALPHA_WEBGL = 0x87EE;
 
 //ASTC formats
 //https://www.khronos.org/registry/webgl/extensions/WEBGL_compressed_texture_astc/
-var COMPRESSED_RGBA_ASTC_4x4_KHR = 0x93B0;  
+var COMPRESSED_RGBA_ASTC_4x4_KHR = 0x93B0;
 var COMPRESSED_RGBA_ASTC_5x4_KHR = 0x93B1;
 var COMPRESSED_RGBA_ASTC_5x5_KHR = 0x93B2;
 var COMPRESSED_RGBA_ASTC_6x5_KHR = 0x93B3;
@@ -442,7 +467,7 @@ var COMPRESSED_RGBA_ASTC_12x10_KHR = 0x93BC;
 var COMPRESSED_RGBA_ASTC_12x12_KHR = 0x93BD;
 
 /*
- No support for SRGB formats 
+ No support for SRGB formats
  - no way how to determine RGB vs SRGB from ASTC file
  */
 var COMPRESSED_SRGB8_ALPHA8_ASTC_4x4_KHR = 0x93D0;
@@ -525,6 +550,22 @@ var PVR_HEADER_HEIGHT = 6;
 var PVR_HEADER_WIDTH = 7;
 var PVR_HEADER_MIPMAPCOUNT = 11;
 var PVR_HEADER_METADATA = 12;
+
+var PKM_HEADER_LENGTH = 16; // in 8 bit ints.
+var PKM_HEADER_MAGIC_LENGTH = 4; // 'PKM '
+var PKM_HEADER_MAGIC = [0x50, 0x4b, 0x4d, 0x20]; // 'PKM '
+var PKM_HEADER_VERSION_MAJOR = 4;
+var PKM_HEADER_VERSION_MINOR = 5;
+var PKM_HEADER_TYPE = 7;
+var PKM_HEADER_WIDTH_HIGH = 8;
+var PKM_HEADER_WIDTH_LOW = 9;
+var PKM_HEADER_HEIGHT_HIGH = 10;
+var PKM_HEADER_HEIGHT_LOW = 11;
+var PKM_HEADER_ACTIVE_W_HIGH = 12;
+var PKM_HEADER_ACTIVE_W_LOW = 13;
+var PKM_HEADER_ACTIVE_H_HIGH = 14;
+var PKM_HEADER_ACTIVE_H_LOW = 15;
+
 
 //===============//
 // ASTC constants //
